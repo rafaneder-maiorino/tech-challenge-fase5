@@ -1,0 +1,32 @@
+{
+  "registered_model": "ticket-classifier",
+  "version": 1,
+  "model_version": "ticket-classifier/v1",
+  "run_id": "bbe391593dc744dcb9e64ea7b19a04e0",
+  "candidate": "tfidf_logreg",
+  "labels": [
+    "Technical Support",
+    "Product Support",
+    "Customer Service",
+    "IT Support",
+    "Billing and Payments",
+    "Returns and Exchanges",
+    "Service Outages and Maintenance",
+    "Sales and Pre-Sales",
+    "Human Resources",
+    "General Inquiry"
+  ],
+  "technical_queues": [
+    "IT Support",
+    "Product Support",
+    "Service Outages and Maintenance",
+    "Technical Support"
+  ],
+  "metrics": {
+    "test_accuracy": 0.3833435394978567,
+    "test_f1_macro": 0.3710791601454641,
+    "test_f1_weighted": 0.3853922702045817,
+    "test_routing_f1": 0.6930200789456514,
+    "cv_f1_macro_mean": 0.33237358772546616
+  }
+}
