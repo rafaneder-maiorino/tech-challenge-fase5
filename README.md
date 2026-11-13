@@ -50,7 +50,7 @@ curl -s localhost:8000/chat -H 'content-type: application/json' \
 ```
 
 Por padrão o provedor é `fake`: monta a resposta com o trecho recuperado e a página, sem chamar
-nenhuma API. Para usar um LLM de verdade, crie um `.env` (nunca versionado):
+nenhuma API. Para usar um LLM de verdade, copie `.env.example` para `.env` (nunca versionado) e preencha:
 
 ```bash
 LLM_PROVIDER=gemini          # ou openai
