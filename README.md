@@ -36,6 +36,33 @@ uv run python -m support_copilot.model.train      # outro terminal; ~8 min
 |---|---|---|
 | GET | `/health` | status e versão do modelo |
 | POST | `/predict` | `{"text": "..."}` (1 a 1000 caracteres) → fila, confiança, `is_technical`, rota (`rag` ou `queue`) |
+| POST | `/chat` | `{"question": "..."}` → resposta baseada no manual técnico, com fontes (página, seção, score, trecho); recusa se o manual não cobre a pergunta |
+
+### `/chat` (RAG sobre o manual)
+
+O manual é a documentação do OPNsense (BSD 2-Clause), já versionado em `data/manuals/`. Na primeira
+chamada o índice FAISS é montado com embeddings locais (o modelo de ~70 MB é baixado uma vez) e fica
+em cache em `data/index/`.
+
+```bash
+curl -s localhost:8000/chat -H 'content-type: application/json' \
+  -d '{"question": "How do I reset the root password?"}'
+```
+
+Por padrão o provedor é `fake`: monta a resposta com o trecho recuperado e a página, sem chamar
+nenhuma API. Para usar um LLM de verdade, crie um `.env` (nunca versionado):
+
+```bash
+LLM_PROVIDER=gemini          # ou openai
+GOOGLE_API_KEY=...           # para gemini (modelo padrão gemini-2.5-flash, troque com GEMINI_MODEL)
+# OPENAI_API_KEY=...         # para openai (modelo padrão gpt-4.1-mini, troque com OPENAI_MODEL)
+```
+
+E suba a API lendo o arquivo: `uv run --env-file .env uvicorn support_copilot.api.main:app --port 8000`.
+
+Ajustes opcionais: `RAG_TOP_K` (4), `RAG_MIN_SCORE` (0,67), `RAG_CHUNK_SIZE` (1500),
+`RAG_CHUNK_OVERLAP` (225), `LLM_MAX_TOKENS` (400), `LLM_TIMEOUT_S` (30).
+Avaliação da recuperação: `uv run python scripts/eval_retrieval.py` → `reports/retrieval_eval.md`.
 
 ## Resultado atual do classificador
 
