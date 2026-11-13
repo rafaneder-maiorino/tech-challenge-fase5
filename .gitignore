@@ -7,3 +7,5 @@ mlflow.db
 reports/_build/
 .DS_Store
 data/processed/
+mlartifacts/
+logs/

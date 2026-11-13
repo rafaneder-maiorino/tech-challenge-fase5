@@ -13,6 +13,7 @@ HF_REPO = "https://huggingface.co/datasets/Tobi-Bueck/customer-support-tickets/r
 RAW_FILE = "aa_dataset-tickets-multi-lang-5-2-50-version.csv"
 RAW_SHA256 = "f187c090e59581c2bbf3aa1377c8db4dd647464ecf2ae51bf8966e42e0ed6bc0"
 RAW_DIR = Path("data/raw")
+MAX_CHARS = 1000  # one limit for training data and for the API contract (enunciado, Etapa 3)
 
 # The 10 queues present in the English slice (see docs/dataset.md). Training fails
 # loudly if upstream ever adds, drops or renames one.
