@@ -8,6 +8,39 @@ repositório.
 
 ---
 
+## 13/11/2026 (sex, tarde) — D2 adiantado: modelo + MLflow
+
+**Feito**
+- Servidor MLflow local na porta 5001 (backend SQLite, artefatos em `mlartifacts/`).
+- `support_copilot.model.train`: 4 candidatos com validação cruzada pareada (mesmos folds), uma execução no MLflow por candidato (parâmetros, métricas, matriz de confusão, classification report, modelo com signature). Campeão registrado como `ticket-classifier` com alias `@champion` e exportado para `models/ticket_classifier.joblib` + `.json`.
+- `reports/model_selection.md`, `reports/confusion_matrix.png`, `reports/tuning_linear.md`, `docs/findings.md` §1–§3 e captura do MLflow em `docs/img/`.
+- `prepare` refeito com split por família de paráfrases, e schema Pandera validando os 3 arquivos processados.
+
+**Decisões**
+- **Split por família de paráfrases** (componentes conexos com cosseno ≥ 0,7) no split e na validação cruzada. O split aleatório deixava 57,4% do teste com uma paráfrase no treino.
+- **Campeão = regressão logística (C=4)**, escolhida pela validação cruzada por família, sem usar o teste.
+- **Roteamento pela fila mais provável.** Rotear pela soma das probabilidades técnicas não melhora (0,694 contra 0,693).
+- **XGBoost em configuração leve** (150 árvores, 20k features): continua como candidato, mas perde dos lineares e custa ~7× o tempo.
+- MLflow 3.18 serializa com `skops`. Os tipos do XGBoost e da calibração do sklearn entram numa lista explícita de tipos confiáveis, por candidato.
+
+**Números (teste por família)**
+| métrica | valor |
+|---|---|
+| F1 macro na validação cruzada / no teste (campeão) | **0,332 ± 0,008 / 0,371** |
+| Acurácia no teste | 0,383 |
+| F1 do roteamento técnico × não técnico | 0,693 |
+| Margem sobre o 2º colocado (XGBoost), pareada por fold | +0,018 ± 0,014, vence em 5 de 5 |
+| Classe majoritária (F1 macro) | 0,045 |
+| Mesmo modelo com split aleatório (com vazamento) | 0,610 / 0,658 |
+
+**Validação:** ruff limpo · 17 testes passando.
+
+**Hipótese refutada:** os erros não ficam dentro do grupo técnico: 45,8% atravessam a fronteira do roteamento (findings §2).
+
+**Pendente:** colar no Makefile os alvos `mlflow-server` e `train` (bloqueio de escrita remota).
+
+---
+
 ## 13/11/2026 (sex) — D1: repositório e dataset
 
 **Feito**

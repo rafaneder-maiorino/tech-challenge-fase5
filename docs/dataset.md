@@ -7,6 +7,11 @@
 **Licença:** CC BY-NC 4.0, que permite uso acadêmico não comercial com atribuição. O repositório
 não redistribui o CSV: `make download` baixa o arquivo da origem e confere o hash.
 
+> **Correção (13/11, D2):** os números de sinal abaixo foram medidos com validação cruzada
+> aleatória e estão **inflados por paráfrases quase duplicadas** que cruzam os folds. Medido sem
+> vazamento (split por família de paráfrases), o F1 macro honesto é **0,332** na validação cruzada
+> e **0,371** no teste. Ver [`findings.md` §1](findings.md). A escolha do dataset continua válida.
+
 Todos os números abaixo saem de `reports/dataset_audit.md`, gerado por
 `scripts/dataset_audit.py` (validação cruzada estratificada em 5 folds, F1 macro, seed 42).
 
