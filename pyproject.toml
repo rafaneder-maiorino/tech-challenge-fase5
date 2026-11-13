@@ -1,7 +1,7 @@
 [project]
 name = "support-copilot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hybrid support copilot: ticket triage, RAG with guardrails and drift monitoring (FIAP MLET Phase 5 Datathon)"
 readme = "README.md"
 authors = [
     { name = "Rafael Neder Maiorino", email = "rafaneder@gmail.com" }
@@ -25,3 +25,17 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.5",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "LOG"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
