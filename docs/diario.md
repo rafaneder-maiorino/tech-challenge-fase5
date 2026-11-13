@@ -8,6 +8,34 @@ repositório.
 
 ---
 
+## 13/11/2026 (sex, tarde) — D3 adiantado: API de triagem
+
+**Feito**
+- FastAPI com `/health` e `/predict`, carregando o campeão versionado em `models/` no startup (sem depender do MLflow).
+- Contrato Pydantic: `text` com `strip` e depois 1 a 1000 caracteres, sem campos extras (`extra="forbid"`). Resposta com fila, confiança, `is_technical`, rota (`rag`/`queue`), as 3 filas mais prováveis e a versão do modelo.
+- Logs em JSON com hash SHA-256 truncado e tamanho do texto, **nunca o texto**. As respostas 422 não ecoam o `input` que o Pydantic devolveria por padrão (privacidade desde o desenho).
+- Schema Pandera dos lotes (entrou junto com o D2, porque o `prepare` passou a usá-lo).
+- README mínimo com o caminho para rodar.
+
+**Decisões**
+- **A API serve o `.joblib` exportado**, e não o registry do MLflow: sobe num clone limpo sem servidor e sem treino.
+- **Removido o eco do texto no 422**, para o texto de um chamado inválido não voltar ao cliente nem cair em log de proxy.
+- **A mesma constante `MAX_CHARS` vale para o treino, o Pandera e a API**: o modelo nunca vê um texto que a API recusaria.
+
+**Números**
+| métrica | valor |
+|---|---|
+| Testes (API + contrato + dados + treino) | 30 passando |
+| Latência de inferência no modelo (log `latency_ms`) | ~5 ms |
+| Latência de ponta a ponta via curl (50 chamadas sequenciais) | ~7,5 ms por chamada |
+| Ocorrências do e-mail de teste no log | 0 |
+
+**Validação:** ruff limpo · 30 testes · API rodando com uvicorn: `/health` 200, `/predict` 200, vazio → 422, 1001 caracteres → 422.
+
+**Pendente:** alvo `serve` no Makefile, junto com `mlflow-server` e `train` (bloqueio de escrita remota).
+
+---
+
 ## 13/11/2026 (sex, tarde) — D2 adiantado: modelo + MLflow
 
 **Feito**
