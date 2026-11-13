@@ -39,7 +39,45 @@ class PredictionOut(BaseModel):
     model_version: str
 
 
+class ChatIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"question": "How do I reset the root password without reinstalling?"},
+                {"question": "How do I configure WAN failover between two internet providers?"},
+            ]
+        },
+    )
+    question: TicketText = Field(description=f"Question about the manual. 1 to {MAX_CHARS} characters after trimming.")
+
+
+class SourceOut(BaseModel):
+    page: int = Field(description="1-based page in data/manuals/opnsense-support-manual.pdf")
+    section: str
+    score: float = Field(description="Cosine similarity between question and passage.")
+    snippet: str
+
+
+class ChatOut(BaseModel):
+    answer: str
+    grounded: bool = Field(description="False when the manual does not cover the question.")
+    refusal_reason: str | None = Field(
+        default=None, description="no_relevant_context (LLM not called) or model_declined."
+    )
+    sources: list[SourceOut]
+    provider: str = Field(description="fake | gemini | openai")
+
+
+class RagHealth(BaseModel):
+    chunks: int
+    provider: str
+    llm_model: str
+    min_score: float
+
+
 class HealthOut(BaseModel):
     status: Literal["ok"]
     model_version: str
     candidate: str
+    rag: RagHealth | None = None
