@@ -9,3 +9,5 @@ reports/_build/
 data/processed/
 mlartifacts/
 logs/
+data/index/
+data/models_cache/
