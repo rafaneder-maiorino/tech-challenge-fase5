@@ -1,8 +1,8 @@
 """FastAPI app. Run with: uv run uvicorn support_copilot.api.main:app --port 8000
 
-Privacy by design (LGPD): the raw ticket text never reaches a log line or an error response.
-Logs carry a truncated SHA-256 of the text and its length; 422 responses drop pydantic's
-``input`` echo, which would otherwise return the full (possibly personal) text to the caller.
+Privacy by design (LGPD): the raw ticket/question text never reaches a log line or an error
+response. Logs carry a truncated SHA-256 of the text and its length; 422 responses drop
+pydantic's ``input`` echo, which would otherwise return the full (possibly personal) text.
 """
 
 from __future__ import annotations
@@ -16,12 +16,25 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from support_copilot.api.classifier import TicketClassifier
-from support_copilot.api.schemas import HealthOut, PredictionOut, TicketIn
+from support_copilot.api.schemas import (
+    ChatIn,
+    ChatOut,
+    HealthOut,
+    PredictionOut,
+    RagHealth,
+    SourceOut,
+    TicketIn,
+)
+from support_copilot.rag.chat import ChatService
+from support_copilot.rag.config import RagSettings
+from support_copilot.rag.ingest import load_or_build
+from support_copilot.rag.llm import build_generator
+from support_copilot.rag.retriever import ManualRetriever
 
 logger = logging.getLogger("support_copilot.api")
 
@@ -31,7 +44,7 @@ def text_fingerprint(text: str) -> str:
 
 
 def log_event(event: str, **fields: object) -> None:
-    """One JSON object per line; never pass raw ticket text here."""
+    """One JSON object per line; never pass raw ticket or question text here."""
     logger.info(json.dumps({"event": event, **fields}, ensure_ascii=False))
 
 
@@ -43,20 +56,35 @@ def configure_logging() -> None:
     logger.setLevel(logging.INFO)
 
 
+def build_chat_service(settings: RagSettings) -> ChatService:
+    store = load_or_build(settings)
+    retriever = ManualRetriever(store, top_k=settings.top_k, min_score=settings.min_score)
+    return ChatService(retriever, build_generator())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     models_dir = Path(os.environ.get("MODEL_DIR", "models"))
     app.state.classifier = TicketClassifier.load(models_dir)
     log_event("model_loaded", model_version=app.state.classifier.model_version, models_dir=str(models_dir))
+    t0 = time.perf_counter()
+    app.state.rag_settings = RagSettings()
+    app.state.chat = build_chat_service(app.state.rag_settings)
+    log_event(
+        "rag_ready",
+        chunks=app.state.chat.retriever.store.index.ntotal,
+        provider=app.state.chat.generator.name,
+        seconds=round(time.perf_counter() - t0, 1),
+    )
     yield
 
 
 app = FastAPI(
     title="Support Copilot",
-    description="Hybrid support copilot: ticket triage with a classical model, RAG over a manual (next), "
+    description="Hybrid support copilot: ticket triage with a classical model, RAG over the OPNsense manual, "
     "guardrails and drift monitoring. FIAP MLET Phase 5 Datathon.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -71,7 +99,16 @@ async def validation_handler(request: Request, exc: RequestValidationError) -> J
 @app.get("/health", response_model=HealthOut, tags=["ops"])
 def health(request: Request) -> HealthOut:
     clf: TicketClassifier = request.app.state.classifier
-    return HealthOut(status="ok", model_version=clf.model_version, candidate=clf.candidate)
+    chat: ChatService | None = getattr(request.app.state, "chat", None)
+    rag = None
+    if chat is not None:
+        rag = RagHealth(
+            chunks=chat.retriever.store.index.ntotal,
+            provider=chat.generator.name,
+            llm_model=chat.generator.model,
+            min_score=chat.retriever.min_score,
+        )
+    return HealthOut(status="ok", model_version=clf.model_version, candidate=clf.candidate, rag=rag)
 
 
 @app.post("/predict", response_model=PredictionOut, tags=["triage"])
@@ -91,3 +128,37 @@ def predict(ticket: TicketIn, request: Request) -> PredictionOut:
         model_version=out.model_version,
     )
     return out
+
+
+@app.post("/chat", response_model=ChatOut, tags=["rag"])
+def chat(body: ChatIn, request: Request) -> ChatOut:
+    """Answer from the manual only, citing pages. Below the similarity threshold the LLM is not called."""
+    service: ChatService = request.app.state.chat
+    t0 = time.perf_counter()
+    try:
+        result = service.ask(body.question)
+    except Exception as exc:  # provider outage, quota, timeout: never leak the provider's message
+        log_event("chat_error", text_sha=text_fingerprint(body.question), error=type(exc).__name__)
+        raise HTTPException(status_code=502, detail="llm_unavailable") from exc
+    log_event(
+        "chat",
+        text_sha=text_fingerprint(body.question),
+        text_len=len(body.question),
+        grounded=result.grounded,
+        refusal_reason=result.refusal_reason,
+        llm_called=result.llm_called,
+        n_sources=len(result.sources),
+        top_score=round(result.sources[0].score, 4) if result.sources else None,
+        provider=result.provider,
+        latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+    )
+    return ChatOut(
+        answer=result.answer,
+        grounded=result.grounded,
+        refusal_reason=result.refusal_reason,
+        provider=result.provider,
+        sources=[
+            SourceOut(page=h.page, section=h.section, score=round(h.score, 4), snippet=h.text[:300])
+            for h in result.sources
+        ],
+    )

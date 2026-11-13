@@ -1,0 +1,64 @@
+# Retrieval evaluation set for the OPNsense support manual.
+# in_domain: the answer lives in `section` (doc page name, as in the PDF outline).
+# out_of_domain: questions the manual cannot answer; used to calibrate the refusal threshold.
+# Written by reading the source pages (github.com/opnsense/docs) BEFORE looking at retrieval results.
+in_domain:
+  - q: "I forgot the root password of the firewall. How can I reset it without reinstalling?"
+    section: troubleshooting/password_reset
+  - q: "After a bad change I lost access to the web GUI and SSH. How do I roll back to a previous configuration from the console?"
+    section: troubleshooting/config_reset
+  - q: "The web interface certificate is broken and the GUI won't load. How do I restore web GUI access?"
+    section: troubleshooting/webgui
+  - q: "The installer hangs at 'booting' on a serial console device. What can I do?"
+    section: troubleshooting/boot
+  - q: "OpenVPN road warrior clients connect but traffic is blocked on the assigned interface. Why?"
+    section: troubleshooting/openvpn
+  - q: "Gateway monitoring shows a dpinger sendto error in the logs. What does it mean?"
+    section: troubleshooting/gateways
+  - q: "How does receive-side scaling spread packets over CPU cores to improve throughput?"
+    section: troubleshooting/performance
+  - q: "The firmware section of config.xml is corrupt. How do I reset the firmware configuration?"
+    section: troubleshooting/reset_firmware
+  - q: "After enabling netmap for the intrusion prevention system my network interface became unreachable."
+    section: troubleshooting/network
+  - q: "Which hardening settings can I relax to get more performance compared to plain FreeBSD?"
+    section: troubleshooting/hardening
+  - q: "How do I install updates, and what is the difference between minor updates and major upgrades?"
+    section: manual/updates
+  - q: "How can I back up and restore the firewall configuration?"
+    section: manual/backups
+  - q: "How do I add a DNS host override so a local hostname resolves to an internal IP address?"
+    section: manual/unbound
+  - q: "How do I configure WAN failover between two internet providers?"
+    section: manual/multiwan
+  - q: "How do I enable two-factor authentication with Google Authenticator?"
+    section: manual/two_factor
+  - q: "Which installation image should I write to a USB stick, and what is the difference between embedded and full images?"
+    section: manual/install
+  - q: "How do I create a user and give it privileges through a group?"
+    section: manual/users
+  - q: "How do I configure dynamic DNS so my changing public IP keeps the same hostname?"
+    section: manual/dynamic_dns
+  - q: "How do I configure the upstream NTP time servers?"
+    section: manual/ntpd
+  - q: "How do I add a gateway and choose the default gateway?"
+    section: manual/gateways
+  - q: "How do I set up a site-to-site IPsec VPN tunnel?"
+    section: manual/vpnet
+  - q: "In what order are firewall rules evaluated?"
+    section: manual/firewall
+  - q: "How do I install a plugin package from the firmware page?"
+    section: manual/firmware
+  - q: "How do I assign a new network interface?"
+    section: manual/interfaces
+out_of_domain:
+  - "I was charged twice for my November subscription, can you refund one of the charges?"
+  - "How many vacation days do I have left this year?"
+  - "What is your return policy for a package that arrived damaged?"
+  - "Can you recommend a good pizza place near the office?"
+  - "Who won the last football world cup?"
+  - "What is the price of the enterprise plan for 50 seats?"
+  - "Please update the shipping address on my order."
+  - "Write a short poem about the ocean."
+  - "How do I bake sourdough bread at home?"
+  - "My Excel spreadsheet formulas are not recalculating automatically."

@@ -1,0 +1,53 @@
+The file opnsense-support-manual.pdf in this folder is a subset of the official OPNsense
+documentation (https://docs.opnsense.org, source: https://github.com/opnsense/docs),
+printed to PDF on 2026-11-13 from docs built at commit 07a754a13b580393797a21321970a18b83b4dfb9.
+It is redistributed unmodified under the documentation's 2-clause BSD license, reproduced below.
+OPNsense is a registered trademark of Deciso B.V. This project is not affiliated with Deciso.
+
+----------------------------------------------------------------------
+
+# OPNsense documentation
+The documentation is licensed under a 2-clause BSD Licnse:
+
+Copyright (c) Deciso B.V.
+Copyright (c) 2017-2018 Franco Fichtner
+Copyright (c) 2017-2018 Fabian Franz
+Copyright (c) 2017-2018 David Harrigan
+Copyright (c) 2017-2018 Michael Muenz
+Copyright (c) 2015-2018 Ad Schellevis
+Copyright (c) 2015-2018 Jos Schellevis
+Copyright (c) 2017-2018 Shawn Webb
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1. Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+THIS DOCUMENTATION IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE OPNSENSE DOCUMENTATION PROJECT BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS DOCUMENTATION, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Pictures
+Some pictures are licensed under the Creative Commons Zero (CC0) license:
+
+https://creativecommons.org/publicdomain/zero/1.0/
+
+# Logos
+Logos may be subject to additional copyrights, property
+rights, trademarks etc. and may require the consent of a third party or the
+license of these rights. Deciso B.V. does not represent or make any warranties
+that it owns or licenses any of the mentioned, nor does it grant them.
