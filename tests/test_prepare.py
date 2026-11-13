@@ -1,8 +1,15 @@
 import pandas as pd
 import pytest
 
-from support_copilot.data.prepare import MAX_CHARS, build_text, check_labels, clean, split
-from support_copilot.data.source import QUEUES, TECHNICAL_QUEUES
+from support_copilot.data.prepare import (
+    build_text,
+    check_labels,
+    clean,
+    cross_leakage,
+    paraphrase_groups,
+    split,
+)
+from support_copilot.data.source import MAX_CHARS, QUEUES, TECHNICAL_QUEUES
 
 
 def _raw(rows: list[dict]) -> pd.DataFrame:
@@ -50,9 +57,37 @@ def test_check_labels_fails_on_unexpected_queue():
         check_labels(df)
 
 
-def test_split_is_stratified_and_disjoint():
-    rows = [{"body": f"{q} ticket {i}", "queue": q} for q in QUEUES for i in range(20)]
+def test_paraphrase_groups_join_near_duplicates_only():
+    texts = pd.Series(
+        [
+            "my vpn connection drops every few minutes after the update",
+            "my vpn connection drops every few minutes after the latest update",  # paraphrase of 0
+            "please refund the duplicate charge on my invoice",
+            "the printer on floor three is jammed again",
+        ]
+    )
+    g = paraphrase_groups(texts, threshold=0.7)
+    assert g[0] == g[1]
+    assert len({g[0], g[2], g[3]}) == 3
+
+
+def _families() -> pd.DataFrame:
+    """20 families per queue, 3 paraphrases each: a random split would leak families."""
+    rows = []
+    for q in QUEUES:
+        word = q.split()[0].lower()
+        for f in range(20):
+            for p in range(3):
+                rows.append({"body": f"{word} family{f} unique{f} token{f} variant {p}", "queue": q})
     out, _ = clean(_raw(rows), "en")
-    train, test = split(out)
+    out["group_id"] = paraphrase_groups(out["text"], threshold=0.7)
+    return out
+
+
+def test_split_keeps_families_on_one_side_and_is_stratified():
+    df = _families()
+    train, test = split(df)
+    assert not set(train["group_id"]) & set(test["group_id"])
     assert not set(train["text_id"]) & set(test["text_id"])
-    assert (test["label"].value_counts() == 4).all()  # 20% of 20 per class
+    assert set(test["label"]) == set(QUEUES)
+    assert cross_leakage(train, test) == 0.0
