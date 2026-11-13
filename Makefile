@@ -1,4 +1,4 @@
-.PHONY: install download audit prepare mlflow-server train tune serve lint format test all
+.PHONY: install download audit prepare mlflow-server train tune serve lint format test all build-manual eval-retrieval
 
 install:  ## create the environment (uv sync)
 	uv sync
@@ -36,3 +36,9 @@ test:
 	uv run pytest -q
 
 all: download prepare lint test
+
+build-manual:  ## rebuild the OPNsense PDF (needs Google Chrome)
+	uv run python scripts/build_manual.py
+
+eval-retrieval:  ## chunk-size comparison + refusal threshold -> reports/retrieval_eval.md
+	uv run python scripts/eval_retrieval.py
