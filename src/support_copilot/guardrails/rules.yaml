@@ -1,0 +1,119 @@
+# Guardrail rules (input and retrieved-context layers). Edit here, not in code.
+#
+# Matching runs on a NORMALISED copy of the text: Unicode NFKD, accents stripped, casefolded,
+# zero-width characters removed, whitespace collapsed; a second "de-leeted" variant maps
+# 0->o 1->i 3->e 4->a 5->s 7->t @->a $->s. A rule fires if it matches either variant.
+# `case_sensitive: true` rules run on the raw text instead (e.g. "DAN" vs the name "Dan").
+#
+# kind:  blocklist  -> forbidden words / harmful requests (input only)
+#        injection  -> attempts to override the manual-only behaviour (input and/or context)
+# scope: where the rule runs. Context = chunks returned by the retriever (indirect injection).
+# Patterns are Python regexes; single quotes in YAML are doubled ('').
+version: 2  # v1 snapshot: data/eval/guardrails_rules_v1.yaml (see reports/guardrails_eval.md)
+# v2 (after the v1 holdout run): extra views of the text for obfuscated attacks.
+normalization:
+  despace: true  # "i g n o r e   t h e   m a n u a l" -> "ignore the manual"
+  base64: true  # decode base64 blobs and match the rules on the payload too
+rules:
+  # ---------- blocklist: forbidden words (pt/en), whole words only ----------
+  - id: profanity_en
+    kind: blocklist
+    category: forbidden_words
+    scope: [input]
+    terms: [fuck, fucking, fucked, motherfucker, shit, bullshit, bitch, asshole, cunt, bastard, dickhead]
+  - id: profanity_pt
+    kind: blocklist
+    category: forbidden_words
+    scope: [input]
+    terms: [porra, caralho, merda, puta, foda-se, fodase, fdp, arrombado, cacete, desgracado, babaca]
+
+  # ---------- blocklist: harmful requests ----------
+  - id: harmful_build_en
+    kind: blocklist
+    category: harmful_content
+    scope: [input]
+    pattern: '\b(write|create|build|make|code|develop|generate)\b[^.?!]{0,30}\b(malware|ransomware|virus|keylogger|trojan|botnet|rootkit|worm)\b'
+  - id: harmful_intrusion_en
+    kind: blocklist
+    category: harmful_content
+    scope: [input]
+    pattern: '\b(hack|break|get)\s+into\b|\bsteal\b[^.?!]{0,20}\b(passwords?|credentials|data|identit(y|ies))\b|\b(launch|perform|run)\b[^.?!]{0,10}\bddos\b[^.?!]{0,20}\b(on|against)\b'
+  - id: harmful_pt
+    kind: blocklist
+    category: harmful_content
+    scope: [input]
+    pattern: '\b(criar|crie|fazer|faca|escrever|escreva|desenvolver|gerar)\b[^.?!]{0,30}\b(malware|ransomware|virus|keylogger|trojan|botnet)\b|\binvadir\b|\broubar\b[^.?!]{0,20}\b(senhas?|credenciais|dados)\b'
+
+  # ---------- injection: override the instructions / the manual ----------
+  - id: override_instructions_en
+    kind: injection
+    category: instruction_override
+    scope: [input, context]
+    pattern: '\b(ignore|disregard|forget|override|bypass|set\s+aside)\b[^.?!]{0,15}\b(previous|prior|above|earlier|initial|original|system|your|my|these|those)\s+(\w+\s+)?(instructions?|prompts?|guidelines|directives|rules|restrictions|guidance)\b|\b(instructions?|rules|guidance|guidelines|directives)\s+(that\s+)?you\s+(were|have\s+been|got)\s+(given|told)\b|\b(ignore|disregard|forget|override|bypass)\b\s+(all|any)\s+(\w+\s+)?(instructions?|prompts?|guidelines|directives|restrictions)\b'
+  - id: override_source_en
+    kind: injection
+    category: off_manual
+    scope: [input, context]
+    pattern: '\b(ignore|disregard|forget)\s+(the|this|that|your)\s+(manual|pdf|document|documentation|context|sources?)\b'
+  - id: off_manual_en
+    kind: injection
+    category: off_manual
+    scope: [input]
+    pattern: '\b(don''t|dont|do not|stop|no need to)\b[^.?!]{0,15}\b(use|follow|rely on|look at|consult|read)\b[^.?!]{0,10}\b(manual|pdf|context|documents?|documentation|sources)\b|\b(from|with|use)\s+your\s+own\s+(knowledge|training|opinion|data)\b|\buse\s+what\s+you\s+(already\s+)?know\b|\b(answer|respond|reply)\b[^.?!]{0,20}\b(without|outside|beyond)\s+(the\s+|this\s+)?(manual|pdf|context|documentation)\b'
+  - id: override_pt
+    kind: injection
+    category: instruction_override
+    scope: [input, context]
+    pattern: '\b(ignore|ignora|ignorar|esqueca|esquece|esquecer|desconsidere|desconsiderar|despreze)\b[^.?!]{0,15}\b(instrucoes|orientacoes|diretrizes|prompt|regras anteriores|suas regras)\b'
+  - id: off_manual_pt
+    kind: injection
+    category: off_manual
+    scope: [input, context]
+    pattern: '\b(ignore|ignora|esqueca|esquece|desconsidere)\s+(o|este|esse|a|esta|essa)\s+(manual|pdf|documento|documentacao|contexto)\b|\b(nao|sem)\s+(use|usar|utilize|consulte|consultar|siga|seguir)\b[^.?!]{0,10}\b(manual|pdf|contexto|documento|documentacao)\b|\bcom\s+(o\s+)?seu\s+(proprio\s+)?conhecimento\b'
+
+  # ---------- injection: role play / jailbreak personas ----------
+  - id: role_play_en
+    kind: injection
+    category: role_play
+    scope: [input]
+    pattern: '\byou\s+are\s+(now|no\s+longer)\b|\bfrom\s+now\s+on,?\s+(you|your|act|respond|answer|behave)\b|\bimagine\s+(that\s+)?(you\s+are|you''re)\b|\bpretend\s+(to\s+be|you\s+are|you''re)\b|\brole\s?-?play\b|\b(you\s+are|you''re|act\s+as|become)\s+(an?\s+)?(unrestricted|unfiltered|uncensored|jailbroken|evil)\b|\bdo\s+anything\s+now\b|\b(developer|god|dan)\s+mode\b|\bjailbr(oken|eak\w*)\b'
+  - id: dan_persona
+    kind: injection
+    category: role_play
+    scope: [input]
+    case_sensitive: true
+    pattern: '\b(DAN|STAN|DUDE)\b'
+  - id: role_play_pt
+    kind: injection
+    category: role_play
+    scope: [input]
+    pattern: '\b(voce|tu)\s+agora\s+(e|eh|sera)\b|\b(a\s+partir\s+de\s+agora|de\s+agora\s+em\s+diante),?\s+(voce|tu|responda|aja|ignore|finja)\b|\bfinja\s+(que|ser)\b|\baja\s+como\b|\bfaca\s+de\s+conta\b|\bmodo\s+(desenvolvedor|dev|deus|sem\s+restricoes)\b|\b(assistente|ia)\s+sem\s+(restricoes|regras|filtros|censura)\b'
+  - id: no_restrictions
+    kind: injection
+    category: role_play
+    scope: [input, context]
+    pattern: '\b(answer|respond|reply|talk|act|behave)\b[^.?!]{0,25}\bwithout\s+(any\s+)?(restrictions|filters|censorship|limits|guidelines)\b|\b(responda|responde|aja|fale)\b[^.?!]{0,25}\bsem\s+(nenhuma\s+)?(restricoes|regras|filtros|censura|limites)\b'
+
+  # ---------- injection: exfiltrate the prompt or secrets ----------
+  - id: prompt_exfiltration_en
+    kind: injection
+    category: prompt_exfiltration
+    scope: [input, context]
+    pattern: '\b(system|initial|original|hidden|secret)\s+(prompt|instructions)\b|\b(reveal|show|print|repeat|display|output|tell\s+me|leak|dump)\b[^.?!]{0,25}\byour\s+(\w+\s+)?(instructions|prompt|rules|guidelines)\b'
+  - id: prompt_exfiltration_pt
+    kind: injection
+    category: prompt_exfiltration
+    scope: [input, context]
+    pattern: '\b(prompt|instrucoes)\s+(do|de)\s+sistema\b|\b(mostre|revele|imprima|repita|exiba|me\s+diga|liste|vaze)\b[^.?!]{0,25}\b(suas|tuas)\s+(instrucoes|regras|diretrizes)\b'
+  - id: secret_exfiltration
+    kind: injection
+    category: secret_exfiltration
+    scope: [input, context]
+    pattern: '\b(reveal|leak|exfiltrate|dump)\b[^.?!]{0,40}\b(passwords?|credentials|secrets?|api\s+keys?|access\s+tokens?|tokens|environment\s+variables|env\s+vars|private\s+keys?)\b|\blist\b[^.?!]{0,20}\b(environment\s+variables|env\s+vars)\b|\b(revele|vaze)\b[^.?!]{0,40}\b(senhas?|credenciais|segredos?|variaveis\s+de\s+ambiente)\b'
+
+  # ---------- injection: chat-template / delimiter smuggling ----------
+  - id: delimiter_smuggling
+    kind: injection
+    category: delimiter
+    scope: [input, context]
+    pattern: '<\|?\s*(im_start|im_end|system|endoftext|assistant)\s*\|?>|\[/?(inst|sys)\]|(^|\n)\s*(system|assistant)\s*:|#{2,}\s*(system|new\s+instructions?|instructions?)\b|\bnew\s+instructions?\s*:|\bnovas\s+instrucoes\s*:'
