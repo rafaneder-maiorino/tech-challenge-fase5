@@ -38,6 +38,7 @@ uv run python -m support_copilot.model.train      # outro terminal; ~8 min
 | GET | `/health` | status e versão do modelo |
 | POST | `/predict` | `{"text": "..."}` (1 a 1000 caracteres) → fila, confiança, `is_technical`, rota (`rag` ou `queue`) |
 | POST | `/chat` | `{"question": "..."}` → resposta baseada no manual técnico, com fontes (página, seção, score, trecho); recusa se o manual não cobre a pergunta; **400** se um guardrail de entrada bloquear |
+| POST | `/ticket` | `{"text": "..."}` → o fluxo completo: triagem e, se o chamado for técnico, resposta do manual; senão, a fila de destino. Nunca descarta um chamado |
 
 ### `/chat` (RAG sobre o manual)
 
@@ -64,6 +65,9 @@ E suba a API lendo o arquivo: `uv run --env-file .env uvicorn support_copilot.ap
 Ajustes opcionais: `RAG_TOP_K` (4), `RAG_MIN_SCORE` (0,67), `RAG_CHUNK_SIZE` (1500),
 `RAG_CHUNK_OVERLAP` (225), `LLM_MAX_TOKENS` (400), `LLM_TIMEOUT_S` (30).
 Avaliação da recuperação: `uv run python scripts/eval_retrieval.py` → `reports/retrieval_eval.md`.
+Reranker opcional (cross-encoder): `RAG_RERANKER=Xenova/ms-marco-MiniLM-L-6-v2`. Desligado por padrão:
+corta 91% das respostas indevidas em chamados reais, mas recusa mais perguntas legítimas e custa
+~270 ms por pergunta ([`docs/findings.md` §7](docs/findings.md)).
 
 ### Guardrails do `/chat`
 
@@ -89,6 +93,31 @@ curl -s localhost:8000/chat -H 'content-type: application/json' \
 
 Avaliação (ataques dev/holdout, perguntas legítimas e um conjunto externo de 662 prompts):
 `uv run python scripts/eval_guardrails.py` → [`reports/guardrails_eval.md`](reports/guardrails_eval.md).
+
+### `/ticket` (triagem → RAG)
+
+O endpoint que junta as duas etapas do desafio. Três desfechos possíveis:
+
+| `action` | quando | o que volta |
+|---|---|---|
+| `routed` | a triagem prevê uma fila não técnica | a fila; o RAG e o LLM nem rodam |
+| `answered` | fila técnica e o manual cobre o assunto | a fila + a resposta com citações |
+| `escalated` | fila técnica, mas o assistente não responde | a fila + `escalation_reason`: `no_relevant_context`, `guardrail_blocked`, `llm_unavailable`... |
+
+Diferente do `/chat`, aqui um guardrail **não** devolve 400 e uma queda do LLM **não** devolve 502:
+o chamado é de um cliente e precisa cair numa fila. O guardrail continua impedindo que ele chegue à
+busca e ao LLM, e o motivo vai em `blocked_by`.
+
+O classificador **nunca vê dado pessoal**: e-mail, telefone, CPF, CNPJ e cartão são removidos antes
+da triagem (`strip_pii`). Motivo e números em [`reports/triage_pii.md`](reports/triage_pii.md).
+
+```bash
+curl -s localhost:8000/ticket -H 'content-type: application/json' \
+  -d '{"text": "Locked out of the firewall\nI forgot the root password. How can I reset it?"}'
+```
+
+Avaliação do RAG em perguntas novas e do `/ticket` sobre os 3.266 chamados de teste:
+`uv run python scripts/eval_rag.py` (~15 min) → [`reports/rag_eval.md`](reports/rag_eval.md).
 
 ## Resultado atual do classificador
 

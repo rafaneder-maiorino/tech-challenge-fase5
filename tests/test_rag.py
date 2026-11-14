@@ -163,3 +163,50 @@ def test_known_questions_retrieve_their_section(real_retriever, question, sectio
 @pytest.mark.slow
 def test_out_of_domain_question_has_no_relevant_evidence(real_retriever):
     assert real_retriever.relevant("I was charged twice on my invoice, can I get a refund?") == []
+
+
+class StubReranker:
+    """Scores passages by a fixed table, to test the rerank path without the ONNX model."""
+
+    def __init__(self, table):
+        self.table = table
+
+    def rerank(self, query, documents):
+        return [self.table.get(d, -10.0) for d in documents]
+
+
+class StubStore:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def similarity_search_with_score(self, q, k):
+        from langchain_core.documents import Document
+
+        return [
+            (Document(page_content=t, metadata={"page": i + 1, "section": f"s/{i}", "chunk_id": i}), sc)
+            for i, (t, sc) in enumerate(self.docs[:k])
+        ]
+
+
+def test_reranker_reorders_and_filters_by_its_own_threshold():
+    from support_copilot.rag.retriever import ManualRetriever
+
+    store = StubStore([("generic", 0.80), ("exact", 0.70), ("noise", 0.69)])
+    r = ManualRetriever(
+        store,
+        top_k=2,
+        min_score=0.75,
+        reranker=StubReranker({"exact": 6.0, "generic": -5.0}),
+        rerank_min=-2.5,
+        fetch_k=3,
+    )
+    hits = r.relevant("q")
+    assert [h.text for h in hits] == ["exact"]  # cosine 0.70 < min_score, but the cross-encoder decides
+    assert hits[0].rerank == 6.0 and r.mode == "rerank"
+
+
+def test_without_reranker_the_cosine_threshold_decides():
+    from support_copilot.rag.retriever import ManualRetriever
+
+    r = ManualRetriever(StubStore([("generic", 0.80), ("exact", 0.70)]), top_k=2, min_score=0.75)
+    assert [h.text for h in r.relevant("q")] == ["generic"] and r.mode == "cosine"

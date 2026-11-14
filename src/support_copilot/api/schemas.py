@@ -17,6 +17,10 @@ class TicketIn(BaseModel):
         extra="forbid",
         json_schema_extra={
             "examples": [
+                {
+                    "text": "Locked out of the firewall\nI forgot the root password. "
+                    "How can I reset it without reinstalling?"
+                },
                 {"text": "VPN keeps disconnecting\nSince the firmware update the VPN drops every few minutes."},
                 {"text": "Invoice charged twice\nI was billed two times for the November subscription."},
             ]
@@ -56,6 +60,7 @@ class SourceOut(BaseModel):
     page: int = Field(description="1-based page in data/manuals/opnsense-support-manual.pdf")
     section: str
     score: float = Field(description="Cosine similarity between question and passage.")
+    rerank: float | None = Field(default=None, description="Cross-encoder relevance logit, when enabled.")
     snippet: str
 
 
@@ -85,11 +90,34 @@ class GuardrailBlockOut(BaseModel):
     detail: GuardrailBlock
 
 
+class GuardrailHit(BaseModel):
+    guardrail: Literal["input.blocklist", "input.injection"]
+    category: str
+
+
+class TicketOut(BaseModel):
+    action: Literal["routed", "answered", "escalated"] = Field(
+        description="routed: non-technical queue, no LLM. answered: technical and answered from the manual. "
+        "escalated: technical, but sent to a person (see escalation_reason)."
+    )
+    queue: str = Field(description="Queue the ticket lands in (the triage prediction).")
+    triage: PredictionOut
+    answer: ChatOut | None = Field(default=None, description="Assistant output when the RAG ran.")
+    escalation_reason: str | None = Field(
+        default=None,
+        description="guardrail_blocked, llm_unavailable, or the /chat refusal reason "
+        "(no_relevant_context, context_rejected, model_declined, missing_citation, ...).",
+    )
+    blocked_by: GuardrailHit | None = Field(default=None, description="Set when the input guardrail stopped the RAG.")
+
+
 class RagHealth(BaseModel):
     chunks: int
     provider: str
     llm_model: str
     min_score: float
+    retrieval: Literal["cosine", "rerank"] = "cosine"
+    rerank_min: float | None = None
 
 
 class HealthOut(BaseModel):

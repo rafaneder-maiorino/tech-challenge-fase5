@@ -197,3 +197,81 @@ frases ("you are now logged in"). Um trecho envenenado sintético é descartado 
 
 **Custo:** 18 regras, entrada + PII em 0,07 ms (p50) e 0,13 ms (p95) por pergunta, medidos em 86
 textos × 20 repetições. Um bloqueio responde em ~1 ms, sem busca e sem token.
+
+## §7 — Fiel ao manual não é o mesmo que útil para o cliente (14/11)
+
+### Perguntas novas derrubam os números do conjunto de desenvolvimento
+
+Conjunto *golden* escrito e commitado antes de qualquer rodada (`data/eval/rag_golden.yaml`, commit
+`c38094b`): 16 perguntas do manual, 7 fora do assunto e 5 "difíceis" (rede, mas de outros
+fabricantes). Mesma configuração do D5 (chunk 1500/225, limiar de cosseno 0,67):
+
+| | dev (D4, usado para escolher) | golden (novo) |
+|---|---|---|
+| hit@1 / MRR | 0,958 / 0,979 | **0,750 / 0,844** |
+| perguntas do manual respondidas | 100% | 87,5% (2 recusadas) |
+| fora do assunto recusadas | 100% | 85,7% |
+| difíceis recusadas (BGP, AWS, DigiCert, Cisco, Netgear) | — | **40%** |
+
+O limiar foi escolhido no meio de uma folga que só existia no dev. Nas perguntas novas as faixas se
+sobrepõem: menor cosseno de pergunta legítima 0,654, maior de pergunta difícil 0,704.
+
+### No tráfego real, o RAG responde chamados que não são dele
+
+O `/ticket` sobre os 3.266 chamados de teste: 35,4% roteados, 57,8% escalados e **223 (6,8%)
+respondidos** pelo manual do OPNsense. Mas os produtos do dataset são SaaS, sistemas hospitalares,
+Kubernetes, roteadores de outras marcas. Li 30 dos 223 sorteados: **nenhum** é sobre o produto do
+manual. Todos saem com `grounded=true` e citação de página: a resposta é fiel ao manual e inútil
+para o cliente. Texto genérico de TI ("update", "server", "network") fica na faixa 0,67–0,74 de
+cosseno com o manual, a mesma das perguntas legítimas.
+
+Os guardrails não dispararam em nenhum dos 2.110 chamados técnicos reais (0 falsos positivos em
+tráfego benigno).
+
+### Reranker: melhor onde importa, pior na regra que eu mesmo fixei
+
+Um cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) relê pergunta e trecho juntos e dá uma nota de
+relevância. Protocolo fixado no código **antes** da rodada (commit `ab59a85`): limiar só a partir do
+dev (ponto médio da folga, a mesma regra do cosseno → −2,49); golden avaliado uma vez; adotar só se,
+contra o cosseno, (1) responder pelo menos tantas perguntas do manual, (2) recusar mais perguntas
+difíceis e (3) responder menos chamados.
+
+| | cosseno 0,67 | reranker −2,49 |
+|---|---|---|
+| perguntas do manual respondidas (golden) | **87,5%** | 75,0% |
+| difíceis recusadas | 40% | **80%** |
+| chamados de teste respondidos | 223 | **20** (−91%) |
+| latência por chamado | **10 ms** | 271 ms |
+
+Regra (1) falhou, então **o padrão continua cosseno**. O reranker fica disponível por configuração
+(`RAG_RERANKER=Xenova/ms-marco-MiniLM-L-6-v2`).
+
+Por que o limiar do reranker errou: o dev foi escrito lendo as páginas do manual, então as perguntas
+repetem as palavras dele. Menor nota legítima no dev: +1,79; mediana no golden: −1,07. E o dev não
+tinha perguntas difíceis, só fora do assunto óbvias (mínimo −6,78), então o ponto médio caiu longe
+demais da fronteira real. O mesmo viés explica parte da queda do cosseno.
+
+**Leitura:** a regra tratou "recusar uma pergunta legítima" e "responder errado" com o mesmo peso. Num
+suporte, a recusa vira escalonamento para uma pessoa, enquanto a resposta errada com citação parece
+confiável. Trocar a regra agora, depois de ver o resultado, seria ajustar a pergunta à resposta. Fica
+como decisão explícita para a próxima rodada, com um dev v2 (perguntas parafraseadas + negativos
+difíceis) e um custo declarado para cada tipo de erro. O golden atual já foi usado nesta comparação e
+não serve mais para escolher nada.
+
+### O classificador não deve ver dado pessoal (e não por um motivo só)
+
+O dataset é anonimizado (0 de 16.329 textos com PII), mas chamados reais terminam com assinatura.
+Com uma linha de contato sintética em cada chamado de teste (5 sementes, `reports/triage_pii.md`):
+
+| o que o classificador vê | F1 macro | rotas trocadas | novos "Customer Service" |
+|---|---|---|---|
+| texto bruto | 0,3634 | 186 | 136 |
+| PII com placeholder `[EMAIL]` | 0,3593 | 133 | 1 |
+| **PII removido** | 0,3618 | **107** | 24 |
+
+Nomes e e-mails empurram o TF-IDF para "Customer Service". O placeholder resolve isso, mas custa F1:
+`[EMAIL]` vira a palavra "email", que no treino pertence a problemas de e-mail. Remover tem o menor
+número de rotas trocadas e custo de 0,0016 de F1 (sinal consistente nas 5 sementes, menor que o desvio
+entre elas). Decisão: a triagem recebe o texto sem PII; o RAG mantém os placeholders. As 107 trocas que
+restam vêm de palavras de assinatura ("regards", "reach me"), sensibilidade que é candidata natural a
+cenário de drift no D8.

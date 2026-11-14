@@ -1,0 +1,63 @@
+# Golden set for the RAG (D7) — written and committed BEFORE any retrieval run on it.
+# Purpose: check whether the choices made on data/eval/rag_questions.yaml (chunk 1500/225, refusal
+# threshold 0.67) hold on questions they were never tuned on. None of these questions appear there.
+#
+# Protocol (fixed before the first run):
+# - `section` is the page that should answer; `accept` lists other pages that also answer it,
+#   decided now. A hit is the first retrieved chunk whose section is in {section} + accept.
+# - Labels are NOT changed after seeing results. If a label turns out wrong, the run is reported
+#   as is and the correction is listed separately in reports/rag_eval.md.
+# - out_of_domain.hard are networking questions the manual cannot answer (other vendors/products):
+#   they share vocabulary with the manual and are the realistic failure case for a topic threshold.
+in_domain:
+  - q: "How do I give a fixed IP address to a specific device based on its MAC address?"
+    section: manual/dhcp
+  - q: "How can I block a website domain for every client on the network using DNS?"
+    section: manual/unbound
+  - q: "How do I make the firewall send its DNS queries encrypted with DNS over TLS?"
+    section: manual/unbound
+  - q: "What is the difference between the pass, block and reject actions in a firewall rule?"
+    section: manual/firewall
+  - q: "Which VPN technologies does the firewall support?"
+    section: manual/vpnet
+  - q: "How do I schedule automatic configuration backups to Google Drive?"
+    section: manual/backups
+  - q: "How do I go back to an earlier version of the configuration from the web interface?"
+    section: manual/backups
+    accept: [troubleshooting/config_reset]
+  - q: "How do I lock a plugin package so it is not changed by updates?"
+    section: manual/firmware
+  - q: "How do I create a VLAN on top of a physical network port?"
+    section: manual/interfaces
+  - q: "How do I configure the wireless card as an access point?"
+    section: manual/wireless
+  - q: "How do I force traffic from one LAN subnet to always leave through the second WAN connection?"
+    section: manual/multiwan
+    accept: [manual/gateways]
+  - q: "What happens to a gateway when its packet loss goes above the configured threshold?"
+    section: manual/gateways
+    accept: [manual/multiwan, troubleshooting/gateways]
+  - q: "Can users be required to enter a one-time token in addition to their password when logging in?"
+    section: manual/two_factor
+  - q: "Throughput is low and I suspect the network card offloading settings. What should I check?"
+    section: troubleshooting/performance
+    accept: [troubleshooting/network, manual/interfaces]
+  - q: "How can I check that my dynamic DNS hostname was updated to the new public IP?"
+    section: manual/dynamic_dns
+  - q: "How do I let devices on my LAN use the firewall as their time server?"
+    section: manual/ntpd
+out_of_domain:
+  easy:
+    - "What is the refund policy for annual subscriptions?"
+    - "How do I reset my Microsoft 365 password?"
+    - "My printer shows as offline in Windows 11. How do I fix it?"
+    - "How do I install Docker on Ubuntu?"
+    - "Which Wi-Fi mesh system is best for a large house?"
+    - "Write a short poem about autumn."
+    - "What time does the support team open on Saturdays?"
+  hard:
+    - "How do I configure a VLAN trunk port on a Cisco Catalyst switch?"
+    - "How do I set up port forwarding on a Netgear home router?"
+    - "How do BGP route reflectors work in large ISP networks?"
+    - "How do I allow inbound HTTPS in an AWS security group?"
+    - "How do I renew our SSL certificate with DigiCert?"

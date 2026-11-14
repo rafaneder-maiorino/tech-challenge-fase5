@@ -79,3 +79,16 @@ def mask_pii(text: str) -> Masked:
     out = sub(CPF_BARE, "CPF", out, check=cpf_ok)
     out = sub(PHONE, "PHONE", out)
     return Masked(out, dict(counts))
+
+
+_PLACEHOLDER = re.compile(r"\[(?:EMAIL|CARD|CNPJ|CPF|PHONE)\]")
+
+
+def strip_pii(text: str) -> str:
+    """Personal data removed outright, for the ticket classifier.
+
+    Typed placeholders help the LLM, but a TF-IDF model reads "[EMAIL]" as the word "email", which in
+    training belongs to e-mail problems (IT Support). With a contact line appended to the test tickets
+    (5 seeds, reports/triage_pii.md), stripping cost 0.0016 F1 macro vs the raw text (placeholders:
+    0.0040) and cut route flips 186 -> 107. Main reason, though: the classifier never sees PII."""
+    return " ".join(_PLACEHOLDER.sub(" ", mask_pii(text).text).split())

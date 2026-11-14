@@ -9,7 +9,7 @@ output  -> citations must point to the pages sent to the model; PII masked in th
 from support_copilot.guardrails.context import ContextGuard, ContextVerdict
 from support_copilot.guardrails.input import InputGuard, InputVerdict
 from support_copilot.guardrails.output import OutputGuard, OutputVerdict
-from support_copilot.guardrails.pii import Masked, mask_pii
+from support_copilot.guardrails.pii import Masked, mask_pii, strip_pii
 from support_copilot.guardrails.rules import RuleSet, normalize
 
 __all__ = [
@@ -23,4 +23,5 @@ __all__ = [
     "RuleSet",
     "mask_pii",
     "normalize",
+    "strip_pii",
 ]
