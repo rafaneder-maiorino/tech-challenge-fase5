@@ -41,7 +41,52 @@ saem as histórias do roteiro (formato STAR: situação → o que fizemos → re
 | 14/11 | comparação justa | As normalizações novas da v2 (base64, letras espaçadas) estavam no código, então o snapshot v1 teria sido medido com ajuda da v2 | Viraram configuração do `rules.yaml` (`normalization:`). O snapshot v1 não as tem e reproduz o 4/14 (teste) | ★ |
 | 14/11 | bug de PII | O regex de telefone mascarava qualquer número de 11 dígitos, até um número de chamado | Telefone sem separador só conta se for celular brasileiro (DDD + 9). Número de 11 dígitos só vira `[CPF]` com dígito verificador válido. IP, porta, MTU e MAC nunca são mascarados (teste) | ★ |
 | 14/11 | contexto | As regras de role-play ("you are now...") marcariam documentação comum ("you are now logged in") | Ficaram só na entrada. As de injeção indireta marcam **0/166** trechos do manual real | ★ |
-| 14/11 | pendente | O alvo `eval-guardrails` do Makefile não pôde ser gravado (arquivo protegido contra escrita remota) | Funciona como `uv run python scripts/eval_guardrails.py`. Trecho para colar no resumo do dia | ★ |
+| 14/11 | resolvido | O alvo `eval-guardrails` do Makefile não pôde ser gravado (arquivo protegido contra escrita remota) | Colado manualmente no PR #9: `make eval-guardrails` funciona | ★ |
+| 14/11 | **achado de avaliação** | O RAG que fazia 95,8% de hit@1 no conjunto de desenvolvimento caiu para **75%** em 16 perguntas novas, escritas e commitadas antes de rodar (golden). E respondeu 3 de 5 perguntas "difíceis" de outros fabricantes (BGP, AWS, DigiCert) | O dev foi escrito lendo o manual: as perguntas repetem as palavras dele e inflam os scores. Registrado com o golden como conjunto de teste de verdade (findings §7) | ★★★ |
+| 14/11 | **achado de produto** | No `/ticket` com os 3.266 chamados de teste, **223** foram "respondidos" pelo manual do OPNsense. Li 30 deles: **nenhum** era sobre o produto do manual (SaaS, hospital, Kubernetes, roteador de outra marca), e todos saíram com citação de página | "Fiel ao manual" não é "útil para o cliente": a citação dá cara de confiável a uma resposta errada. É o argumento para medir o RAG no tráfego real, e não só em perguntas escritas para ele | ★★★ |
+| 14/11 | **decisão com protocolo** | Testamos um reranker (cross-encoder). Respostas indevidas: 223 → **20** (−91%); perguntas difíceis recusadas: 40% → 80%. Mas recusou 2 perguntas legítimas a mais (75% × 87,5%) | Regra fixada no código antes da rodada (commit `ab59a85`) exigia não perder perguntas legítimas → **ficou o cosseno**. O reranker fica disponível por configuração, e trocar a regra depois de ver o resultado seria ajustar a pergunta à resposta | ★★★ |
+| 14/11 | bug de modelo | Acrescentar "Contact: maria.silva@example.com" a um chamado técnico mudou a fila de Technical Support para Customer Service | Medido em escala (5 sementes): o texto bruto manda 136 chamados para Customer Service. A triagem passou a receber o texto **sem** dado pessoal: 107 rotas trocadas contra 186, custo de 0,0016 de F1 (`reports/triage_pii.md`) | ★★ |
+| 14/11 | hipótese confirmada | Mascarar com placeholder (`[EMAIL]`) resolvia o desvio, mas baixava o F1 em 0,004. Hipótese: o TF-IDF lê `[EMAIL]` como a palavra "email", que no treino é de problemas de e-mail | Testado removendo o placeholder só para a triagem: o F1 volta ao nível do texto bruto. O RAG continua com os placeholders | ★★ |
+| 14/11 | bug de relatório | A primeira versão do relatório dizia que a mediana do cosseno dos chamados técnicos era 0,683, acima do limiar, com 89% deles escalados | A mediana era só dos respondidos (os escalados não têm fonte). O script passou a registrar a melhor evidência de todo chamado: mediana real 0,624 | ★ |
+| 14/11 | teste errado | O teste do `strip_pii` esperava que a palavra "CPF" sumisse do texto | Quem escreveu "CPF" foi o usuário; só o número é dado pessoal. O teste foi corrigido, e não o código | ★ |
+| 14/11 | sem falso positivo | Guardrails rodaram nos 2.110 chamados técnicos reais do teste | **0 bloqueios**: nenhum chamado benigno foi barrado | ★★ |
+
+---
+
+## 14/11/2026 (sáb, manhã) — D7: `/ticket` e avaliação do RAG
+
+**Feito**
+- `POST /ticket`: triagem → se técnico, guardrails + RAG; senão, a fila. Três desfechos (`routed`, `answered`, `escalated`), sempre com a fila de destino. Guardrail e queda do LLM viram escalonamento com motivo, e não 400/502: o chamado nunca se perde.
+- O classificador deixou de ver dado pessoal (`strip_pii`), com experimento de robustez em 5 sementes (`scripts/eval_triage_pii.py` → `reports/triage_pii.md`).
+- Conjunto golden de 28 perguntas novas, commitado antes de qualquer rodada, e `scripts/eval_rag.py`: recuperação, limiar, ponta a ponta e o `/ticket` sobre os 3.266 chamados de teste, comparando cosseno × reranker, com runs no MLflow (experimento `rag-evaluation`).
+- Reranker cross-encoder opcional (`RAG_RERANKER`), avaliado com protocolo fixado no código antes da rodada.
+- 108 testes passando (eram 88).
+
+**Números**
+| | cosseno (padrão) | reranker |
+|---|---|---|
+| golden hit@1 / MRR | 0,750 / 0,844 | 0,688 / 0,802 |
+| perguntas do manual respondidas | 87,5% | 75,0% |
+| perguntas difíceis recusadas | 40% | 80% |
+| chamados de teste respondidos (todos de outros produtos) | 223 | 20 |
+| latência por chamado | 10 ms | 271 ms |
+
+`/ticket` com o cosseno: 35,4% roteados, 6,8% respondidos, 57,8% escalados; 0 bloqueios de guardrail em 2.110 chamados técnicos reais.
+
+**Decisões**
+- **O padrão continua cosseno**, pela regra fixada antes da rodada. O reranker reduz 91% das respostas indevidas, mas perde perguntas legítimas, e a regra não aceitava essa perda. A troca fica como decisão explícita com custo declarado por tipo de erro (findings §7).
+- **Triagem sem PII, RAG com placeholders:** cada etapa recebe a forma de mascaramento que funciona para ela.
+- **Escalar em vez de errar:** no `/ticket`, qualquer dúvida do assistente vira escalonamento para a fila prevista.
+
+**Hipóteses**
+- *Refutada:* "o limiar escolhido no dev generaliza". No golden, as faixas de score se sobrepõem.
+- *Refutada:* "resposta com citação é resposta certa". 0 de 30 respostas a chamados reais eram sobre o produto do manual.
+- *Confirmada:* o placeholder `[EMAIL]` atrapalha o TF-IDF por virar a palavra "email".
+
+**Pendências**
+- Faithfulness com LLM real (depende da chave no `.env`).
+- Dev v2 do RAG com paráfrases e negativos difíceis + custo por tipo de erro, para decidir de novo cosseno × reranker.
+- Atalhos `eval-rag` e `eval-triage-pii` no Makefile.
 
 ---
 
