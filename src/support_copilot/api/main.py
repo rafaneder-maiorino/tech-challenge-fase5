@@ -25,17 +25,20 @@ from support_copilot.api.schemas import (
     ChatIn,
     ChatOut,
     GuardrailBlockOut,
+    GuardrailHit,
     HealthOut,
     PredictionOut,
     RagHealth,
     SourceOut,
     TicketIn,
+    TicketOut,
 )
-from support_copilot.rag.chat import ChatService, GuardrailBlocked
+from support_copilot.rag.chat import ChatResult, ChatService, GuardrailBlocked
 from support_copilot.rag.config import RagSettings
 from support_copilot.rag.ingest import load_or_build
 from support_copilot.rag.llm import build_generator
 from support_copilot.rag.retriever import ManualRetriever
+from support_copilot.ticket import TicketService
 
 logger = logging.getLogger("support_copilot.api")
 
@@ -72,6 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     t0 = time.perf_counter()
     app.state.rag_settings = RagSettings()
     app.state.chat = build_chat_service(app.state.rag_settings)
+    app.state.tickets = TicketService(app.state.classifier, app.state.chat)
     log_event(
         "rag_ready",
         chunks=app.state.chat.retriever.store.index.ntotal,
@@ -85,7 +89,7 @@ app = FastAPI(
     title="Support Copilot",
     description="Hybrid support copilot: ticket triage with a classical model, RAG over the OPNsense manual, "
     "guardrails and drift monitoring. FIAP MLET Phase 5 Datathon.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -188,6 +192,10 @@ def chat(body: ChatIn, request: Request) -> ChatOut | JSONResponse:
         provider=result.provider,
         latency_ms=round((time.perf_counter() - t0) * 1000, 1),
     )
+    return chat_out(result)
+
+
+def chat_out(result: ChatResult) -> ChatOut:
     return ChatOut(
         answer=result.answer,
         grounded=result.grounded,
@@ -198,4 +206,48 @@ def chat(body: ChatIn, request: Request) -> ChatOut | JSONResponse:
             SourceOut(page=h.page, section=h.section, score=round(h.score, 4), snippet=h.text[:300])
             for h in result.sources
         ],
+    )
+
+
+@app.post("/ticket", response_model=TicketOut, tags=["copilot"])
+def ticket(body: TicketIn, request: Request) -> TicketOut:
+    """End-to-end copilot: triage the ticket and, if it is technical, answer it from the manual.
+
+    Never drops a ticket and never returns a guardrail 400: a non-technical ticket is routed to its
+    queue; a technical one is answered from the manual or escalated to the predicted queue with the
+    reason (manual does not cover it, guardrail blocked it, or the LLM is unavailable).
+    """
+    service: TicketService = request.app.state.tickets
+    t0 = time.perf_counter()
+    res = service.handle(body.text)
+    chat = res.chat
+    log_event(
+        "ticket",
+        text_sha=text_fingerprint(body.text),
+        text_len=len(body.text),
+        queue=res.queue,
+        confidence=round(res.triage.confidence, 4),
+        action=res.action,
+        escalation_reason=res.escalation_reason,
+        guardrail=res.blocked_by.guardrail if res.blocked_by else None,
+        rule=res.blocked_by.rule if res.blocked_by else None,
+        error=res.error,
+        llm_called=chat.llm_called if chat else False,
+        pii_masked=chat.pii_masked if chat else {},
+        n_sources=len(chat.sources) if chat else 0,
+        top_score=round(chat.sources[0].score, 4) if chat and chat.sources else None,
+        latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        model_version=res.triage.model_version,
+    )
+    return TicketOut(
+        action=res.action,
+        queue=res.queue,
+        triage=res.triage,
+        answer=chat_out(chat) if chat else None,
+        escalation_reason=res.escalation_reason,
+        blocked_by=(
+            GuardrailHit(guardrail=res.blocked_by.guardrail, category=res.blocked_by.category)
+            if res.blocked_by
+            else None
+        ),
     )
