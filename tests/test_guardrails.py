@@ -212,3 +212,12 @@ def test_uncited_answer_is_replaced_by_the_refusal():
         REFUSAL,
         True,
     )
+
+
+def test_strip_pii_removes_personal_data_without_placeholder_words():
+    from support_copilot.guardrails import strip_pii
+
+    out = strip_pii("Router down. Contact: maria.silva@example.com or (19) 99876-5432, doc 123.456.789-09")
+    assert "@" not in out and "9876" not in out and "123.456" not in out
+    assert "EMAIL" not in out and "PHONE" not in out and "CPF" not in out
+    assert out.startswith("Router down. Contact:")
