@@ -1,4 +1,4 @@
-.PHONY: install download audit prepare mlflow-server train tune serve lint format test all build-manual eval-retrieval
+.PHONY: install download audit prepare mlflow-server train tune serve lint format test all build-manual eval-retrieval eval-guardrails
 
 install:  ## create the environment (uv sync)
 	uv sync
@@ -42,3 +42,6 @@ build-manual:  ## rebuild the OPNsense PDF (needs Google Chrome)
 
 eval-retrieval:  ## chunk-size comparison + refusal threshold -> reports/retrieval_eval.md
 	uv run python scripts/eval_retrieval.py
+
+eval-guardrails:  ## attack suite + holdout + external set -> reports/guardrails_eval.md
+	uv run python scripts/eval_guardrails.py
