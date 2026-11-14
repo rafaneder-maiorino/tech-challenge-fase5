@@ -63,10 +63,26 @@ class ChatOut(BaseModel):
     answer: str
     grounded: bool = Field(description="False when the manual does not cover the question.")
     refusal_reason: str | None = Field(
-        default=None, description="no_relevant_context (LLM not called) or model_declined."
+        default=None,
+        description="no_relevant_context or context_rejected (LLM not called); model_declined, "
+        "missing_citation, citation_not_in_sources or prompt_leak (answer replaced by the output guardrail).",
     )
     sources: list[SourceOut]
     provider: str = Field(description="fake | gemini | openai")
+    pii_masked: dict[str, int] = Field(
+        default_factory=dict,
+        description="Personal data masked in the question before retrieval and the LLM (type -> count).",
+    )
+
+
+class GuardrailBlock(BaseModel):
+    guardrail: Literal["input.blocklist", "input.injection"]
+    category: str = Field(description="e.g. forbidden_words, harmful_content, instruction_override, role_play")
+    message: str
+
+
+class GuardrailBlockOut(BaseModel):
+    detail: GuardrailBlock
 
 
 class RagHealth(BaseModel):

@@ -24,13 +24,14 @@ from support_copilot.api.classifier import TicketClassifier
 from support_copilot.api.schemas import (
     ChatIn,
     ChatOut,
+    GuardrailBlockOut,
     HealthOut,
     PredictionOut,
     RagHealth,
     SourceOut,
     TicketIn,
 )
-from support_copilot.rag.chat import ChatService
+from support_copilot.rag.chat import ChatService, GuardrailBlocked
 from support_copilot.rag.config import RagSettings
 from support_copilot.rag.ingest import load_or_build
 from support_copilot.rag.llm import build_generator
@@ -84,7 +85,7 @@ app = FastAPI(
     title="Support Copilot",
     description="Hybrid support copilot: ticket triage with a classical model, RAG over the OPNsense manual, "
     "guardrails and drift monitoring. FIAP MLET Phase 5 Datathon.",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -130,13 +131,45 @@ def predict(ticket: TicketIn, request: Request) -> PredictionOut:
     return out
 
 
-@app.post("/chat", response_model=ChatOut, tags=["rag"])
-def chat(body: ChatIn, request: Request) -> ChatOut:
-    """Answer from the manual only, citing pages. Below the similarity threshold the LLM is not called."""
+@app.post(
+    "/chat",
+    response_model=ChatOut,
+    tags=["rag"],
+    responses={400: {"model": GuardrailBlockOut, "description": "Blocked by the input guardrail; LLM not called."}},
+)
+def chat(body: ChatIn, request: Request) -> ChatOut | JSONResponse:
+    """Answer from the manual only, citing pages, behind three guardrail layers.
+
+    Input guardrail (forbidden words, prompt injection) -> 400. PII is masked before retrieval and
+    the LLM. Below the similarity threshold, or if every retrieved chunk looks poisoned, the LLM is
+    not called. Answers without a citation to the retrieved pages are replaced by a refusal.
+    """
     service: ChatService = request.app.state.chat
     t0 = time.perf_counter()
     try:
         result = service.ask(body.question)
+    except GuardrailBlocked as blocked:
+        v = blocked.verdict
+        log_event(
+            "guardrail_block",
+            text_sha=text_fingerprint(body.question),
+            text_len=len(body.question),
+            guardrail=v.guardrail,
+            category=v.category,
+            rule=v.rule,
+            llm_called=False,
+            latency_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": {
+                    "guardrail": v.guardrail,
+                    "category": v.category,
+                    "message": "Request blocked by the input guardrail. Ask a question about the manual.",
+                }
+            },
+        )
     except Exception as exc:  # provider outage, quota, timeout: never leak the provider's message
         log_event("chat_error", text_sha=text_fingerprint(body.question), error=type(exc).__name__)
         raise HTTPException(status_code=502, detail="llm_unavailable") from exc
@@ -147,6 +180,9 @@ def chat(body: ChatIn, request: Request) -> ChatOut:
         grounded=result.grounded,
         refusal_reason=result.refusal_reason,
         llm_called=result.llm_called,
+        pii_masked=result.pii_masked,
+        context_dropped=result.context_dropped,
+        output_pii_masked=result.output_pii_masked,
         n_sources=len(result.sources),
         top_score=round(result.sources[0].score, 4) if result.sources else None,
         provider=result.provider,
@@ -157,6 +193,7 @@ def chat(body: ChatIn, request: Request) -> ChatOut:
         grounded=result.grounded,
         refusal_reason=result.refusal_reason,
         provider=result.provider,
+        pii_masked=result.pii_masked,
         sources=[
             SourceOut(page=h.page, section=h.section, score=round(h.score, 4), snippet=h.text[:300])
             for h in result.sources
