@@ -32,6 +32,61 @@ saem as histórias do roteiro (formato STAR: situação → o que fizemos → re
 | 13/11 | reprodutibilidade | O manual foi gerado de novo do zero, a partir do site da documentação (sem querer: os comandos do Makefile foram colados no terminal) | Saiu o mesmo PDF byte a byte (SHA-256 `792bc484…` idêntico), e a avaliação repetiu os mesmos números. A geração do manual e a avaliação são reproduzíveis | ★ |
 | 13/11 | pendente | O caminho com LLM real (Gemini/OpenAI) não foi testado: depende de chave de API, que só o dono do projeto coloca no `.env` | O provedor `fake` (extrativo, cita a página) cobre testes e demo sem custo. Teste com chave fica para quando ela existir | ★ |
 | 13/11 | pendente | `StarletteDeprecationWarning`: o `TestClient` pede `httpx2` no lugar de `httpx` | Não quebra; fica para o D9, junto do CI | ★ |
+| 14/11 | **hipótese refutada** | As regras de guardrail v1 bloquearam 22/22 ataques de desenvolvimento. No holdout, escrito antes das regras e nunca usado para ajustá-las, bloquearam só **4/14 (28,6%)** | Exatamente o alerta da aula 5 (Zizzo et al., 2025): guardrail sofre fora da distribuição. Registrado como v1, com snapshot das regras (`data/eval/guardrails_rules_v1.yaml`) e um teste que reproduz o 4/14 (findings §6) | ★★★ |
+| 14/11 | **achado de avaliação** | Corrigidos os 10 erros do holdout (base64, letras espaçadas, sinônimos), a v2 foi a 14/14. No conjunto externo `deepset/prompt-injections` (662 prompts, nunca visto), a detecção só subiu de **8,7% para 9,9%** | "Corrigir o teste não generaliza." O número honesto de um guardrail por regras é o externo. Próximo passo prescrito: um classificador treinado como 2ª opinião, medido no mesmo conjunto externo (findings §6) | ★★★ |
+| 14/11 | **defesa em camadas** | Mesmo detectando só ~10% das injeções externas na entrada, **0/263 chegaram ao LLM**: 26 caíram na entrada e 237 no limiar de similaridade | O limiar fez o trabalho pesado porque as injeções externas não falam de firewall. Ressalva escrita: ataque sobre o tema do manual (§5) passa no limiar e só encontra a entrada, e esse é o risco residual | ★★★ |
+| 14/11 | falso positivo curioso | O único benigno externo bloqueado (1/399) foi "Wie ist die Lage in der FDP?": "fdp" é palavrão em português e também o nome de um partido alemão | Mantido e registrado. Corrigir com base no conjunto externo o transformaria em treino | ★★ |
+| 14/11 | armadilha de domínio | Num manual de firewall, palavras de ataque são perguntas legítimas: "block brute force **attacks**", "**act as** a DHCP server", "**override** the default gateway", "**from now on** all traffic...", "**ignore** the certificate warning", e o nome "**Dan**" | Regras com contexto (ex.: "from now on, *you*"), regra do DAN sensível a maiúsculas e 16 perguntas "quase-ataque" na suíte: **0/50** falsos positivos | ★★ |
+| 14/11 | protocolo | Ao escrever as regras v1, entraram sinônimos ("set aside", "uncensored", "invadir"...) que só o holdout, escrito na mesma sessão, sugeria | Removidos antes da rodada do holdout, para o 28,6% ser honesto, e devolvidos na v2 depois da análise de erro | ★ |
+| 14/11 | comparação justa | As normalizações novas da v2 (base64, letras espaçadas) estavam no código, então o snapshot v1 teria sido medido com ajuda da v2 | Viraram configuração do `rules.yaml` (`normalization:`). O snapshot v1 não as tem e reproduz o 4/14 (teste) | ★ |
+| 14/11 | bug de PII | O regex de telefone mascarava qualquer número de 11 dígitos, até um número de chamado | Telefone sem separador só conta se for celular brasileiro (DDD + 9). Número de 11 dígitos só vira `[CPF]` com dígito verificador válido. IP, porta, MTU e MAC nunca são mascarados (teste) | ★ |
+| 14/11 | contexto | As regras de role-play ("you are now...") marcariam documentação comum ("you are now logged in") | Ficaram só na entrada. As de injeção indireta marcam **0/166** trechos do manual real | ★ |
+| 14/11 | pendente | O alvo `eval-guardrails` do Makefile não pôde ser gravado (arquivo protegido contra escrita remota) | Funciona como `uv run python scripts/eval_guardrails.py`. Trecho para colar no resumo do dia | ★ |
+
+---
+
+## 14/11/2026 (sáb) — D6 adiantado: guardrails em três camadas + PII
+
+**Feito**
+- `support_copilot.guardrails`: regras declarativas em `rules.yaml` (18 regras pt/en) e normalização para casar o texto (acentos, maiúsculas, caracteres invisíveis, leetspeak, letras espaçadas, base64).
+- **Entrada:** palavras proibidas, pedidos nocivos e prompt injection direta (sobrescrever instruções, ignorar o manual, role-play/DAN, pedido do prompt do sistema ou de segredos, delimitadores de chat). Bloqueio = **HTTP 400** com `guardrail` e `category`, antes da busca e do LLM. O id da regra vai só para o log.
+- **PII (LGPD):** e-mail, CPF, CNPJ, telefone e cartão viram `[EMAIL]`, `[CPF]`... antes da busca e do LLM (teste com um gerador espião prova que o LLM só vê a versão mascarada). A resposta traz `pii_masked`.
+- **Contexto:** trechos recuperados com injeção indireta são descartados. Sem trecho limpo, recusa sem chamar o LLM.
+- **Saída:** citação `[p. N]` obrigatória e apontando para uma página enviada ao modelo; vazamento do prompt do sistema (canários) vira recusa; PII na resposta é mascarado.
+- Suíte `data/eval/guardrails_suite.yaml` (22 ataques dev + 14 holdout + 16 quase-ataques) e `scripts/eval_guardrails.py` → `reports/guardrails_eval.md`, com conjunto externo `deepset/prompt-injections` (revisão e SHA-256 fixados).
+- Aula 5 (Segurança e Guardrails) lida no Drive: o desenho segue o que ela ensina (400 dizendo qual guardrail barrou, placeholders de PII, inspeção dos documentos recuperados, nenhum guardrail é robusto sozinho).
+- README com a seção de guardrails. 88 testes passando (eram 54).
+
+**Decisões**
+- **Regras primeiro, classificador depois:** regras são auditáveis, rodam em 0,1 ms e não precisam de modelo. A avaliação mostrou o limite delas (~10% de recall fora da distribuição), e o classificador treinado ficou como próximo passo prescrito.
+- **400 com a categoria, sem o id da regra:** quem ataca não ganha o mapa das regras. O log guarda o id para auditoria.
+- **PII mascarado também na busca**, e não só no LLM: um único texto segue pelo pipeline, e o vetor também não carrega o dado.
+- **IP, porta e MAC não são PII aqui:** são a substância técnica da pergunta. Nomes de pessoa não são detectados por regex (Presidio fica como [PRESCRITO] no README do D10).
+- **Holdout honesto:** v1 congelada em snapshot antes da análise de erro; o conjunto externo nunca é usado para ajuste.
+
+**Números**
+| métrica | valor |
+|---|---|
+| Ataques dev bloqueados (v1 e v2) | 22/22 |
+| Ataques holdout bloqueados, v1 → v2 | **4/14 (28,6%)** → 14/14 |
+| Injeções externas bloqueadas na entrada, v1 → v2 | 8,7% → **9,9%** (26/263) |
+| Falsos positivos no domínio (16 quase-ataques + 34 perguntas do RAG) | **0/50** |
+| Falsos positivos no externo benigno | 1/399 (0,3%) |
+| Ataques que chegaram ao LLM, ponta a ponta (suíte / externo) | **0/36 / 0/263** |
+| Perguntas do manual respondidas com os guardrails ligados | 24/24 |
+| Trechos do manual marcados como injeção indireta | 0/166 |
+| Latência entrada + PII (p50 / p95) | 0,07 ms / 0,13 ms |
+| Bloqueio via HTTP (curl) | ~1 ms, sem busca e sem token |
+
+**Validação:** ruff limpo · 88 testes · `scripts/eval_guardrails.py` regenerado · API no uvicorn: ataque → 400 `input.injection/off_manual`, palavrão → 400 `input.blocklist`, pergunta com e-mail e CPF → 200 com `pii_masked={"EMAIL":1,"CPF":1}` e 0 ocorrências do e-mail no log.
+
+**Hipóteses**
+- *Refutada:* "regras que pegam 100% dos ataques de teste protegem o sistema". Pegaram 28,6% do holdout e ~10% do externo.
+- *Em aberto:* um classificador de injeção treinado melhora a recall no externo sem subir o falso positivo no domínio? Medir no mesmo `reports/guardrails_eval.md` (P2).
+
+**Pendências**
+- Colar no Makefile o alvo `eval-guardrails` (arquivo protegido contra escrita remota).
+- Caminho com LLM real continua sem teste (depende da chave no `.env`).
 
 ---
 

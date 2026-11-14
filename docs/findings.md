@@ -147,3 +147,53 @@ dado, e não como instrução, mas depender só do LLM para isso é frágil. Con
 guardrail de entrada **antes** da recuperação, avaliado com uma suíte de ataques e com taxa de
 bloqueio e de falso positivo medidas.
 
+
+## §6 — Guardrail por regras: 100% no que você vê, ~10% no que você não viu (14/11)
+
+**Protocolo.** Antes de existir qualquer regra, foram escritos 22 ataques de desenvolvimento e 14
+de holdout (paráfrases, ofuscação, estilos ausentes do dev), mais 16 perguntas legítimas
+"quase-ataque" (vocabulário perigoso do domínio de firewall). As regras v1 foram escritas olhando
+só o dev. Sinônimos que só o holdout tinha sugerido foram removidos antes da rodada, para o
+holdout continuar honesto. Como teste realmente fora da distribuição, entrou o
+`deepset/prompt-injections` (662 prompts rotulados, en/de, Apache-2.0, revisão fixada), nunca usado
+para ajustar nada. Script: `scripts/eval_guardrails.py` → `reports/guardrails_eval.md`.
+
+| conjunto (camada de entrada) | regras v1 | regras v2 |
+|---|---|---|
+| ataques dev | 22/22 (100%) | 22/22 (100%) |
+| ataques holdout | **4/14 (28,6%, IC95% 12–55%)** | 14/14 (100%, deixou de ser holdout) |
+| externo, injeções em inglês | 22/181 (12,2%) | 23/181 (12,7%) |
+| externo, injeções em alemão | 1/82 (1,2%) | 3/82 (3,7%) |
+| externo, todas as injeções | **23/263 (8,7%)** | **26/263 (9,9%, IC95% 7–14%)** |
+| falsos positivos: 16 quase-ataques + 34 perguntas do RAG | 0/50 | 0/50 (IC95% 0–7%) |
+| falsos positivos: externo benigno | 1/399 | 1/399 (0,3%) |
+
+**Leitura.**
+1. A v1 acertou 100% do que viu e 28,6% do que não viu. É o resultado de Zizzo et al. (2025),
+   citado na aula 5: guardrail sofre com entrada fora da distribuição.
+2. A v2 corrigiu os 10 erros do holdout (decodificação de base64, letras espaçadas e sinônimos) e
+   foi a 100% nele, mas no conjunto externo só passou de 8,7% para 9,9%. **Corrigir o teste não
+   generaliza.** O número que vale para regras é o externo, e ele é baixo.
+3. A precisão é alta: 0/50 no domínio e 1/399 no externo. O único falso positivo é "fdp" (palavrão
+   em português) casando com o partido alemão FDP. Não foi corrigido, porque o conjunto externo
+   não pode virar treino.
+
+**Por que mesmo assim nenhum ataque chegou ao LLM.** Rodando o pipeline inteiro (regras v2,
+recuperador real, LLM fake): 0/36 ataques da suíte e **0/263 injeções externas** chegaram ao LLM.
+Das externas, 26 caem na entrada e 237 no limiar de similaridade, porque não falam do manual. As
+benignas externas também param no limiar (398/399): são fora do domínio. A defesa em camadas
+funcionou, mas o mérito aqui é do limiar, e ele não é um detector de ataque.
+
+**O risco residual tem nome:** ataque **sobre o tema** do manual (como os do §5). Ele passa no
+limiar e só encontra a camada de entrada, cuja recall fora da distribuição é ~10%. Atrás dela ainda
+ficam o prompt de grounding e a camada de saída (citação obrigatória a uma página recuperada; o
+prompt do sistema não pode aparecer na resposta). Próximo passo prescrito, não implementado: um
+classificador de injeção treinado (por exemplo, DeBERTa em ONNX) como 2ª opinião na entrada,
+avaliado neste mesmo conjunto externo.
+
+**Camada de contexto:** 0/166 trechos do manual real marcados pelas regras de injeção indireta.
+As regras de role-play ("you are now...") ficaram só na entrada, porque documentação usa essas
+frases ("you are now logged in"). Um trecho envenenado sintético é descartado antes do LLM (teste).
+
+**Custo:** 18 regras, entrada + PII em 0,07 ms (p50) e 0,13 ms (p95) por pergunta, medidos em 86
+textos × 20 repetições. Um bloqueio responde em ~1 ms, sem busca e sem token.
