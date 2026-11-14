@@ -60,6 +60,7 @@ class SourceOut(BaseModel):
     page: int = Field(description="1-based page in data/manuals/opnsense-support-manual.pdf")
     section: str
     score: float = Field(description="Cosine similarity between question and passage.")
+    rerank: float | None = Field(default=None, description="Cross-encoder relevance logit, when enabled.")
     snippet: str
 
 
@@ -115,6 +116,8 @@ class RagHealth(BaseModel):
     provider: str
     llm_model: str
     min_score: float
+    retrieval: Literal["cosine", "rerank"] = "cosine"
+    rerank_min: float | None = None
 
 
 class HealthOut(BaseModel):

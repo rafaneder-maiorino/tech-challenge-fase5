@@ -35,9 +35,8 @@ from support_copilot.api.schemas import (
 )
 from support_copilot.rag.chat import ChatResult, ChatService, GuardrailBlocked
 from support_copilot.rag.config import RagSettings
-from support_copilot.rag.ingest import load_or_build
 from support_copilot.rag.llm import build_generator
-from support_copilot.rag.retriever import ManualRetriever
+from support_copilot.rag.retriever import build_retriever
 from support_copilot.ticket import TicketService
 
 logger = logging.getLogger("support_copilot.api")
@@ -61,9 +60,7 @@ def configure_logging() -> None:
 
 
 def build_chat_service(settings: RagSettings) -> ChatService:
-    store = load_or_build(settings)
-    retriever = ManualRetriever(store, top_k=settings.top_k, min_score=settings.min_score)
-    return ChatService(retriever, build_generator())
+    return ChatService(build_retriever(settings), build_generator())
 
 
 @asynccontextmanager
@@ -80,6 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "rag_ready",
         chunks=app.state.chat.retriever.store.index.ntotal,
         provider=app.state.chat.generator.name,
+        retrieval=app.state.chat.retriever.mode,
         seconds=round(time.perf_counter() - t0, 1),
     )
     yield
@@ -112,6 +110,8 @@ def health(request: Request) -> HealthOut:
             provider=chat.generator.name,
             llm_model=chat.generator.model,
             min_score=chat.retriever.min_score,
+            retrieval=chat.retriever.mode,
+            rerank_min=chat.retriever.rerank_min if chat.retriever.reranker is not None else None,
         )
     return HealthOut(status="ok", model_version=clf.model_version, candidate=clf.candidate, rag=rag)
 
@@ -203,7 +203,13 @@ def chat_out(result: ChatResult) -> ChatOut:
         provider=result.provider,
         pii_masked=result.pii_masked,
         sources=[
-            SourceOut(page=h.page, section=h.section, score=round(h.score, 4), snippet=h.text[:300])
+            SourceOut(
+                page=h.page,
+                section=h.section,
+                score=round(h.score, 4),
+                rerank=round(h.rerank, 3) if h.rerank is not None else None,
+                snippet=h.text[:300],
+            )
             for h in result.sources
         ],
     )

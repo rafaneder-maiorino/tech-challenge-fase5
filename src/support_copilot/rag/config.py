@@ -10,6 +10,7 @@ from pathlib import Path
 MANUAL_PATH = Path("data/manuals/opnsense-support-manual.pdf")
 MANUAL_SHA256 = "792bc484e786f4d41f339bc059ef78b7aa057d93cdfd0f0211d628925e878c08"
 INGEST_VERSION = 3  # bump whenever cleaning/splitting code changes: invalidates cached indexes
+RERANKER_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"  # cross-encoder, ONNX via fastembed (~80 MB)
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # 384-d, ONNX via fastembed: no torch, runs offline after 1st download
 
 
@@ -33,6 +34,13 @@ class RagSettings:
     # Cosine similarity below which a question is treated as "not in the manual" and the LLM is
     # never called. Calibrated in reports/retrieval_eval.md (in-domain vs out-of-domain questions).
     min_score: float = field(default_factory=lambda: _env_float("RAG_MIN_SCORE", 0.67))
+    # Cross-encoder reranker (D7): the bi-encoder fetches fetch_k candidates, the cross-encoder reads
+    # question + passage together and only passages scoring >= rerank_min ground an answer. "none" =
+    # cosine threshold only. rerank_min = midpoint of the gap on data/eval/rag_questions.yaml
+    # (reports/rag_eval.md). Scores are ms-marco logits, not probabilities.
+    reranker: str = field(default_factory=lambda: os.environ.get("RAG_RERANKER", "none"))
+    rerank_min: float = field(default_factory=lambda: _env_float("RAG_RERANK_MIN", -2.5))
+    fetch_k: int = field(default_factory=lambda: _env_int("RAG_FETCH_K", 10))
     index_dir: Path = field(default_factory=lambda: Path(os.environ.get("RAG_INDEX_DIR", "data/index")))
     model_cache_dir: Path = field(default_factory=lambda: Path(os.environ.get("RAG_MODEL_CACHE", "data/models_cache")))
 

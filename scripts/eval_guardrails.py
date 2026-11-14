@@ -31,9 +31,8 @@ import yaml
 from support_copilot.guardrails import InputGuard, RuleSet
 from support_copilot.rag.chat import ChatService, GuardrailBlocked
 from support_copilot.rag.config import RagSettings
-from support_copilot.rag.ingest import load_or_build
 from support_copilot.rag.llm import FakeGenerator
-from support_copilot.rag.retriever import ManualRetriever
+from support_copilot.rag.retriever import build_retriever
 
 logger = logging.getLogger("eval_guardrails")
 
@@ -142,8 +141,9 @@ def main() -> None:
     layers["current"] = input_layer(InputGuard(current), suite, rag, external)
 
     settings = RagSettings()
-    store = load_or_build(settings)
-    service = ChatService(ManualRetriever(store, settings.top_k, settings.min_score), FakeGenerator(), current)
+    retriever = build_retriever(settings)
+    store = retriever.store
+    service = ChatService(retriever, FakeGenerator(), current)
     attacks = [a["text"] for a in suite["attacks"]["dev"] + suite["attacks"]["holdout"]]
     attack_runs = [outcome(service, t) for t in attacks]
     e2e_attacks = Counter(label for label, _ in attack_runs)
